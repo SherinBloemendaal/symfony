@@ -433,6 +433,20 @@ class RedisExtIntegrationTest extends TestCase
         $this->assertSame(1, $this->connection->getMessageCount());
     }
 
+    public function testItCountsMessagesUsingStreamLengthWhenDeletingAfterAck()
+    {
+        // With delete_after_ack, acked messages are deleted from the stream. Over time
+        // the consumer group's entries-read counter drifts behind entries-added, so
+        // Redis reports a non-zero "lag" even when the stream is empty. Reproduce that
+        // drift by adding an entry and deleting it without the group ever reading it:
+        // entries-added stays ahead of entries-read while the stream holds nothing.
+        $stream = $this->getConnectionStream($this->connection);
+        $id = $this->redis->xadd($stream, '*', ['message' => '{"message": "Hi"}']);
+        $this->redis->xdel($stream, [$id]);
+
+        $this->assertSame(0, $this->connection->getMessageCount());
+    }
+
     private function getConnectionGroup(Connection $connection): string
     {
         $property = (new \ReflectionClass(Connection::class))->getProperty('group');

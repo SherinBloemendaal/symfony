@@ -639,6 +639,18 @@ class Connection
     public function getMessageCount(): int
     {
         $redis = $this->getRedis();
+
+        // When messages are deleted on ack, the stream contains exactly the messages
+        // left to process (setup() enforces a single consumer group in this mode), so
+        // its length is the accurate count. The consumer group "lag" must not be used
+        // here: once entries are deleted from the stream, Redis' per-group entries-read
+        // counter drifts away from entries-added, so "lag" no longer matches the real
+        // backlog (and is reported as NULL whenever last-delivered-id points at an
+        // already-deleted entry).
+        if ($this->deleteAfterAck) {
+            return (int) $redis->xlen($this->stream);
+        }
+
         $groups = $redis->xinfo('GROUPS', $this->stream) ?: [];
 
         $lastDeliveredId = null;
